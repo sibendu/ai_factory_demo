@@ -6,7 +6,7 @@ export function Workspace({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <strong>Invoice<span>Flow</span></strong>
+        <strong>AI <span>Factory</span></strong>
         <form action={logout}>
           <button className="sign-out" type="submit">Sign out</button>
         </form>

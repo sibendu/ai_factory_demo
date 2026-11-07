@@ -8,7 +8,7 @@ export default async function Home() {
   return (
     <Workspace>
       <main className="main">
-        <h1>Welcome to InvoiceFlow</h1>
+        <h1>Welcome to AI Factory Demo</h1>
       </main>
     </Workspace>
   );
