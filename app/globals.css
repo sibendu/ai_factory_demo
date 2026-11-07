@@ -5,6 +5,10 @@ body { margin:0; font-size:14px; line-height:1.4; }
 .topbar { grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; background:var(--navy); color:#fff; padding:0 24px; }
 .topbar strong { font-size:17px; letter-spacing:-.02em; }
 .topbar strong span { color:#b7d5d8; }
+.topbar-brand { display:flex; align-items:center; gap:12px; }
+.sidebar-toggle { display:grid; place-items:center; min-width:44px; min-height:44px; padding:10px; background:transparent; color:#dae3ec; }
+.sidebar-toggle:hover { background:#314861; color:#fff; }
+.app-shell.sidebar-collapsed { grid-template-columns:minmax(0,1fr); }
 .sign-out { border:0; background:transparent; color:#dae3ec; cursor:pointer; }
 .sidebar { background:var(--navy-2); color:#dce7f2; padding:22px 12px; }
 .sidebar p { font-size:11px; letter-spacing:.09em; color:#91a7bd; margin:0 10px 10px; }
