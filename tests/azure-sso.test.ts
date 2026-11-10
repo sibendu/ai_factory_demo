@@ -18,7 +18,7 @@ vi.mock("next/headers", () => ({ cookies: async () => ({
   },
   delete: (name: string) => fixture.cookies.delete(name),
 }) }));
-vi.mock("../server/auth/local-users", () => ({ loadLocalUsers: fixture.localUsers }));
+vi.mock("../server/auth/local-users", () => ({ configuredLocalUser: fixture.localUsers }));
 vi.mock("openid-client", async importOriginal => {
   const original = await importOriginal<typeof import("openid-client")>();
   return { ...original, Configuration: function (...args: ConstructorParameters<typeof original.Configuration>) {
@@ -58,7 +58,8 @@ afterAll(async () => {
 });
 beforeEach(() => {
   vi.stubEnv("NODE_ENV", "development");
-  vi.stubEnv("EINVOICE_SESSION_SECRET", "test-session-secret-at-least-32-characters");
+  vi.stubEnv("NEXTAUTH_URL", "http://localhost:3000");
+  vi.stubEnv("AIFACTORY_SESSION_SECRET", "test-session-secret-at-least-32-characters");
   vi.stubEnv("ALLOW_LOCAL_PASSWORD_LOGIN", "false");
   vi.stubEnv("AZURE_AD_TENANT_ID", tenant);
   vi.stubEnv("AZURE_AD_CLIENT_ID", clientId);
@@ -188,7 +189,7 @@ describe("SSO configuration", () => {
     expect(await hasSession()).toBe(true);
   });
   it.each(["", "too-short"])("returns a friendly failure when the session key is %j", async secret => {
-    vi.stubEnv("EINVOICE_SESSION_SECRET", secret);
+    vi.stubEnv("AIFACTORY_SESSION_SECRET", secret);
     const response = await startAzureLogin(new Request("http://localhost:3000/api/auth/azure/login"));
     expect(response.headers.get("location")).toContain("error=signin_unavailable");
     expect(fixture.cookies.has(AZURE_TRANSACTION_COOKIE)).toBe(false);
@@ -207,8 +208,27 @@ describe("SSO configuration", () => {
     vi.stubEnv("AZURE_AD_REDIRECT_URI", uri);
     expect(azureSsoConfigured()).toBe(false);
   });
-  it("requires HTTPS and secure cookies in production", async () => {
+  it("supports Docker localhost HTTP without an enable flag, including session and logout cookies", async () => {
     vi.stubEnv("NODE_ENV", "production");
+    expect(azureSsoConfigured()).toBe(true);
+    const auth = await begin();
+    expect(fixture.options.get(AZURE_TRANSACTION_COOKIE)?.secure).toBe(false);
+    expect((await completeAzureLogin(callback(auth))).headers.get("location")).toBe("http://localhost:3000/");
+    expect(await hasSession()).toBe(true);
+    expect(fixture.options.get(SESSION_COOKIE)?.secure).toBe(false);
+    await azureLogoutUrl();
+    expect(fixture.options.get(AZURE_LOGOUT_COOKIE)?.secure).toBe(false);
+    vi.stubEnv("AZURE_AD_REDIRECT_URI", "http://app.example.com/api/auth/azure/callback");
+    expect(azureSsoConfigured()).toBe(false);
+    vi.stubEnv("AZURE_AD_REDIRECT_URI", "http://localhost.evil.test/api/auth/azure/callback");
+    expect(azureSsoConfigured()).toBe(false);
+    vi.stubEnv("AZURE_AD_REDIRECT_URI", "https://app.example.com/api/auth/azure/callback");
+    await begin();
+    expect(fixture.options.get(AZURE_TRANSACTION_COOKIE)?.secure).toBe(true);
+  });
+  it("requires HTTPS and secure cookies for deployed production URLs", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AZURE_AD_REDIRECT_URI", "http://app.example.com/api/auth/azure/callback");
     expect(azureSsoConfigured()).toBe(false);
     vi.stubEnv("AZURE_AD_REDIRECT_URI", "https://app.example.com/api/auth/azure/callback");
     expect(azureSettings().redirectUri).toBe("https://app.example.com/api/auth/azure/callback");

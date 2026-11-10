@@ -6,7 +6,7 @@ const audience = "22222222-2222-2222-2222-222222222222";
 const client = "33333333-3333-3333-3333-333333333333";
 const objectId = "44444444-4444-4444-4444-444444444444";
 const state = vi.hoisted(() => ({
-  cookie: undefined as string | undefined, active: true, jwks: {} as JSONWebKeySet,
+  cookie: undefined as string | undefined, jwks: {} as JSONWebKeySet,
   unavailable: false, cookiesSet: vi.fn(), redirect: vi.fn((path: string) => { throw new Error("REDIRECT:" + path); }),
   authenticate: vi.fn(),
   cookiesDeleted: vi.fn(),
@@ -17,8 +17,8 @@ vi.mock("next/headers", () => ({ cookies: async () => ({
   delete: (name: string) => { state.cookiesDeleted(name); if (name === "einvoice_demo_session") state.cookie = undefined; },
 }) }));
 vi.mock("next/navigation", () => ({ redirect: state.redirect }));
-vi.mock("../server/auth/local-users", () => ({
-  loadLocalUsers: () => [{ email: "user@example.com", active: state.active }],
+vi.mock("../server/auth/local-users", async importOriginal => ({
+  ...await importOriginal<typeof import("../server/auth/local-users")>(),
   authenticateLocalUser: state.authenticate,
 }));
 vi.mock("jose", async (importOriginal) => {
@@ -43,7 +43,7 @@ beforeAll(async () => {
   state.jwks = { keys: [{ ...await exportJWK(pair.publicKey), kid: "test-key", alg: "RS256", use: "sig" }] };
 });
 beforeEach(() => {
-  vi.stubEnv("EINVOICE_SESSION_SECRET", "test-session-secret-at-least-32-characters");
+  vi.stubEnv("AIFACTORY_SESSION_SECRET", "test-session-secret-at-least-32-characters");
   vi.stubEnv("ALLOW_LOCAL_PASSWORD_LOGIN", "true");
   vi.stubEnv("AZURE_AD_TENANT_ID", tenant);
   vi.stubEnv("AZURE_AD_CLIENT_ID", audience);
@@ -53,7 +53,8 @@ beforeEach(() => {
   vi.stubEnv("EXTERNAL_API_CLIENT_ID", audience);
   vi.stubEnv("EXTERNAL_API_ALLOWED_CLIENT_IDS", client);
   state.cookie = undefined;
-  state.active = true;
+  vi.stubEnv("AUTH_USER", "user@example.com");
+  vi.stubEnv("AUTH_PASSWORD", "test-password");
   state.unavailable = false;
   state.authenticate.mockReset();
   state.cookiesSet.mockClear();
@@ -106,9 +107,10 @@ describe("UI sessions and request boundary", () => {
     state.cookie = `x${session}`;
     expect((await uiHello(uiRequest())).status).toBe(401);
     state.cookie = session;
-    state.active = false;
+    vi.stubEnv("AUTH_USER", "different-user");
     expect((await uiHello(uiRequest())).status).toBe(401);
-    state.active = true;
+    vi.stubEnv("AUTH_USER", "user@example.com");
+  vi.stubEnv("AUTH_PASSWORD", "test-password");
     vi.useFakeTimers();
     vi.setSystemTime(Date.now() + 9 * 60 * 60 * 1000);
     expect((await uiHello(uiRequest())).status).toBe(401);
@@ -130,7 +132,7 @@ describe("UI sessions and request boundary", () => {
       expect.objectContaining({ httpOnly: true, sameSite: "lax", path: "/" }));
   });
   it.each(["", "too-short"])("returns a friendly failure when the session key is %j", async secret => {
-    vi.stubEnv("EINVOICE_SESSION_SECRET", secret);
+    vi.stubEnv("AIFACTORY_SESSION_SECRET", secret);
     await expect(login(new FormData())).rejects.toThrow("REDIRECT:/login?error=signin_unavailable");
     expect(state.authenticate).not.toHaveBeenCalled();
     expect(state.cookiesSet).not.toHaveBeenCalled();
@@ -142,7 +144,7 @@ describe("UI sessions and request boundary", () => {
   });
   it("permits tenant SSO users independently of the local flag and account file", async () => {
     vi.stubEnv("ALLOW_LOCAL_PASSWORD_LOGIN", "false");
-    state.active = false;
+    vi.stubEnv("AUTH_USER", "different-user");
     state.cookie = createAzureSession(tenant, objectId);
     expect((await uiHello(uiRequest())).status).toBe(200);
     state.cookie = createAzureSession("55555555-5555-5555-5555-555555555555", objectId);

@@ -1,0 +1,151 @@
+name: AI Factory image publishing and ECS deployment
+
+on:
+  workflow_call:
+    secrets:
+      DOCKERHUB_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: ai-factory-${{ vars.AWS_ACCOUNT_ID }}-${{ vars.AWS_REGION }}-${{ vars.ECS_CLUSTER }}-${{ vars.ECS_SERVICE }}
+      cancel-in-progress: false
+    env:
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+      ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
+      DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+      DOCKERHUB_REPOSITORY: ${{ vars.DOCKERHUB_REPOSITORY || 'sibendu/aifactorydemo' }}
+      AWS_PAGER: ''
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Validate deployment settings
+        shell: bash
+        run: |
+          set -euo pipefail
+          for setting in AWS_ACCOUNT_ID AWS_REGION AWS_ROLE_ARN ECS_CLUSTER ECS_SERVICE ECS_CONTAINER_NAME DOCKERHUB_USERNAME DOCKERHUB_REPOSITORY; do
+            if [[ -z "${!setting}" ]]; then
+              echo "::error::Set the GitHub Actions variable $setting."
+              exit 1
+            fi
+          done
+          if [[ ! "$AWS_ACCOUNT_ID" =~ ^[0-9]{12}$ || "$AWS_ROLE_ARN" != "arn:aws:iam::${AWS_ACCOUNT_ID}:role/"* ]]; then
+            echo '::error::AWS account and deployment role must belong to the same account.'
+            exit 1
+          fi
+          if [[ ! "$DOCKERHUB_REPOSITORY" =~ ^[a-z0-9]+([._-][a-z0-9]+)*/[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
+            echo '::error::Use a Docker Hub namespace/repository without a registry or tag.'
+            exit 1
+          fi
+          if [[ "$(git ls-remote origin refs/heads/main | cut -f1)" != "$GITHUB_SHA" ]]; then
+            echo '::error::A newer commit is on main. Deploy its CI run instead.'
+            exit 1
+          fi
+
+      - name: Authenticate to AWS with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          role-session-name: aifactory-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Verify the existing service and latest image before publishing
+        run: python3 scripts/deploy/ecs_service.py preflight
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3
+
+      - name: Build the application image once
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          tags: aifactory-build:ci
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=aifactory-amd64
+          cache-to: type=gha,scope=aifactory-amd64,mode=max
+
+      - name: Publish the build tag and latest to Docker Hub
+        id: image
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$(git ls-remote origin refs/heads/main | cut -f1)" != "$GITHUB_SHA" ]]; then
+            echo '::error::A newer commit is on main. Deploy its CI run instead.'
+            exit 1
+          fi
+          python3 scripts/deploy/ecs_service.py check-target
+          build_image="${DOCKERHUB_REPOSITORY}:build-${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          stable_image="${DOCKERHUB_REPOSITORY}:latest"
+          printf '%s' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+          docker tag aifactory-build:ci "$build_image"
+          docker push "$build_image"
+          docker tag aifactory-build:ci "$stable_image"
+          docker push "$stable_image"
+          build_digest=$(docker buildx imagetools inspect "$build_image" --format '{{json .Manifest}}' | jq -r '.digest')
+          stable_digest=$(docker buildx imagetools inspect "$stable_image" --format '{{json .Manifest}}' | jq -r '.digest')
+          if [[ ! "$build_digest" =~ ^sha256:[a-f0-9]{64}$ || "$stable_digest" != "$build_digest" ]]; then
+            echo '::error::Both Docker Hub tags must reference the same image digest.'
+            exit 1
+          fi
+          echo "build=$build_image" >> "$GITHUB_OUTPUT"
+          echo "stable=$stable_image" >> "$GITHUB_OUTPUT"
+          echo "digest=$build_digest" >> "$GITHUB_OUTPUT"
+
+      - name: Refresh AWS credentials before deployment
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          role-session-name: aifactory-deploy-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Force and verify deployment using the existing task definition
+        env:
+          EXPECTED_IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: python3 scripts/deploy/ecs_service.py deploy
+
+      - name: Record deployment details
+        if: always() && steps.image.outputs.digest != ''
+        env:
+          BUILD_IMAGE: ${{ steps.image.outputs.build }}
+          STABLE_IMAGE: ${{ steps.image.outputs.stable }}
+          TARGET_DIGEST: ${{ steps.image.outputs.digest }}
+          DEPLOYMENT_OUTCOME: ${{ job.status }}
+        shell: bash
+        run: |
+          {
+            echo '### AI Factory ECS deployment'
+            echo "Commit: $GITHUB_SHA"
+            echo "Build image: $BUILD_IMAGE"
+            echo "Stable image: $STABLE_IMAGE"
+            echo "Published digest: $TARGET_DIGEST"
+            echo "Service: $ECS_CLUSTER / $ECS_SERVICE ($AWS_REGION)"
+            echo "Container: $ECS_CONTAINER_NAME"
+            echo "Outcome: $DEPLOYMENT_OUTCOME"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Log out of Docker Hub
+        if: always()
+        run: docker logout

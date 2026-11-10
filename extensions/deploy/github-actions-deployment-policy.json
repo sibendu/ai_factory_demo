@@ -1,0 +1,95 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EcrLogin",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "PushSelectedApplicationImages",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage",
+        "ecr:BatchGetImage"
+      ],
+      "Resource": [
+        "arn:aws:ecr:eu-west-1:630634485794:repository/galanext",
+        "arn:aws:ecr:eu-west-1:630634485794:repository/ecr",
+        "arn:aws:ecr:eu-west-1:630634485794:repository/apr"
+      ]
+    },
+    {
+      "Sid": "ReadAndDeploySelectedEcsServices",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:DescribeServices",
+        "ecs:UpdateService"
+      ],
+      "Resource": [
+        "arn:aws:ecs:eu-west-1:630634485794:service/galanext-cluster/taskdef_galanext-service-8nj66mn3",
+        "arn:aws:ecs:eu-west-1:630634485794:service/apr-cluster/apr-app",
+        "arn:aws:ecs:eu-west-1:630634485794:service/aifactory-cluster/svc_ai_facotry_demo"
+      ]
+    },
+    {
+      "Sid": "ListTasksInSelectedClusters",
+      "Effect": "Allow",
+      "Action": "ecs:ListTasks",
+      "Resource": "*",
+      "Condition": {
+        "ArnEquals": {
+          "ecs:cluster": [
+            "arn:aws:ecs:eu-west-1:630634485794:cluster/galanext-cluster",
+            "arn:aws:ecs:eu-west-1:630634485794:cluster/apr-cluster",
+            "arn:aws:ecs:eu-west-1:630634485794:cluster/aifactory-cluster"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ReadTasksInSelectedClusters",
+      "Effect": "Allow",
+      "Action": "ecs:DescribeTasks",
+      "Resource": [
+        "arn:aws:ecs:eu-west-1:630634485794:task/galanext-cluster/*",
+        "arn:aws:ecs:eu-west-1:630634485794:task/apr-cluster/*",
+        "arn:aws:ecs:eu-west-1:630634485794:task/aifactory-cluster/*"
+      ]
+    },
+    {
+      "Sid": "ReadAprDeployedImageRevision",
+      "Effect": "Allow",
+      "Action": "ecr:DescribeImages",
+      "Resource": "arn:aws:ecr:eu-west-1:630634485794:repository/apr"
+    },
+    {
+      "Sid": "ReadAprRdsBackupState",
+      "Effect": "Allow",
+      "Action": [
+        "rds:DescribeDBInstances",
+        "rds:DescribeDBSnapshots"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "eu-west-1"
+        }
+      }
+    },
+    {
+      "Sid": "CreateAprPreDeploymentSnapshots",
+      "Effect": "Allow",
+      "Action": "rds:CreateDBSnapshot",
+      "Resource": [
+        "arn:aws:rds:eu-west-1:630634485794:db:REPLACE_WITH_APR_RDS_INSTANCE_ID",
+        "arn:aws:rds:eu-west-1:630634485794:snapshot:apr-pre-deploy-*"
+      ]
+    }
+  ]
+}

@@ -2,7 +2,7 @@ import "server-only";
 import * as oidc from "openid-client";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { azureSettings, isGuid } from "./settings";
+import { azureSettings, isGuid, secureAuthCookie } from "./settings";
 import { cookieOptions, readCookie, sessionSigningConfigured, signCookie } from "./signed-cookie";
 import { createAzureSession, setSession } from "./session";
 
@@ -38,7 +38,7 @@ function noStoreRedirect(url: URL) {
 
 export async function startAzureLogin(request: Request) {
   if (!sessionSigningConfigured()) {
-    console.error("[auth] Configure EINVOICE_SESSION_SECRET with at least 32 characters before signing in.");
+    console.error("[auth] Configure AIFACTORY_SESSION_SECRET with at least 32 characters before signing in.");
     return noStoreRedirect(new URL("/login?error=signin_unavailable", request.url));
   }
   try {
@@ -62,7 +62,7 @@ export async function startAzureLogin(request: Request) {
       verifier, state, nonce, tenant: settings.tenant, clientId: settings.clientId, redirectUri: settings.redirectUri,
     }, TRANSACTION_LIFETIME_MS), {
       ...cookieOptions,
-      secure: process.env.NODE_ENV === "production",
+      secure: secureAuthCookie(settings.redirectUri),
       maxAge: TRANSACTION_LIFETIME_MS / 1000,
     });
     return noStoreRedirect(authorization);
@@ -106,7 +106,7 @@ export async function completeAzureLogin(request: Request) {
     });
     const claims = tokens.claims();
     if (!claims || claims.tid !== settings.tenant || !isGuid(claims.oid)) throw new Error("Invalid tenant user.");
-    await setSession(createAzureSession(settings.tenant, claims.oid));
+    await setSession(createAzureSession(settings.tenant, claims.oid), settings.redirectUri);
     return noStoreRedirect(new URL("/", loginOrigin));
   } catch (error) {
     if (error instanceof oidc.AuthorizationResponseError && error.error === "access_denied") {
@@ -125,7 +125,7 @@ export async function azureLogoutUrl() {
   (await cookies()).set(AZURE_LOGOUT_COOKIE, signCookie("azure-logout", {
     tenant: settings.tenant, redirectUri: settings.redirectUri,
   }, TRANSACTION_LIFETIME_MS), {
-    ...cookieOptions, secure: process.env.NODE_ENV === "production", maxAge: TRANSACTION_LIFETIME_MS / 1000,
+    ...cookieOptions, secure: secureAuthCookie(settings.redirectUri), maxAge: TRANSACTION_LIFETIME_MS / 1000,
   });
   const url = new URL(`https://login.microsoftonline.com/${settings.tenant}/oauth2/v2.0/logout`);
   url.searchParams.set("post_logout_redirect_uri", settings.redirectUri);

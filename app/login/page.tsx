@@ -1,5 +1,5 @@
 import { login } from "@/server/auth/actions";
-import { azureSsoConfigured, localPasswordLoginAllowed } from "@/server/auth/settings";
+import { localPasswordLoginAllowed } from "@/server/auth/settings";
 import { loginErrorMessage } from "@/lib/login-errors";
 
 export const dynamic = "force-dynamic";
@@ -7,7 +7,6 @@ export const dynamic = "force-dynamic";
 export default async function Login({ searchParams }: PageProps<"/login">) {
   const error = (await searchParams).error;
   const allowLocal = localPasswordLoginAllowed();
-  const allowSso = azureSsoConfigured();
   const errorMessage = loginErrorMessage(error);
 
   return <main className="login-page">
@@ -25,8 +24,8 @@ export default async function Login({ searchParams }: PageProps<"/login">) {
         <div className="login-card-heading">
         </div>
         {errorMessage && <p className="login-error" role="alert">{errorMessage}</p>}
-        {allowSso && <a className="login-submit login-sso" href="/api/auth/azure/login">Sign in with Microsoft <span aria-hidden="true">→</span></a>}
-        {allowSso && allowLocal && <p className="login-divider">or use your local account</p>}
+        <a className="login-submit login-sso" href="/api/auth/azure/login">Sign in with Microsoft <span aria-hidden="true">→</span></a>
+        {allowLocal && <p className="login-divider">or use your local account</p>}
         {allowLocal && <form action={login} className="login-form">
           <label htmlFor="username">User ID
             <input id="username" name="username" autoComplete="username" required />
@@ -36,7 +35,6 @@ export default async function Login({ searchParams }: PageProps<"/login">) {
           </label>
           <button className="login-submit" type="submit">Sign in <span aria-hidden="true">→</span></button>
         </form>}
-        {!allowLocal && !allowSso && <p role="status">Sign-in is currently unavailable. Contact your administrator.</p>}
         <p className="login-support">Need access? Contact AI Factory <a href="mailto:sibendu.das@philips.com">administrator</a>.</p>
       </div>
     </section>

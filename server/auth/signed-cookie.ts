@@ -2,12 +2,12 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 export function sessionSigningConfigured() {
-  return (process.env.EINVOICE_SESSION_SECRET?.length ?? 0) >= 32;
+  return (process.env.AIFACTORY_SESSION_SECRET?.length ?? 0) >= 32;
 }
 
 function signature(purpose: string, payload: string) {
-  const secret = process.env.EINVOICE_SESSION_SECRET;
-  if (!secret || secret.length < 32) throw new Error("EINVOICE_SESSION_SECRET must contain at least 32 characters.");
+  const secret = process.env.AIFACTORY_SESSION_SECRET;
+  if (!secret || secret.length < 32) throw new Error("AIFACTORY_SESSION_SECRET must contain at least 32 characters.");
   return createHmac("sha256", secret).update(`${purpose}:${payload}`).digest();
 }
 

@@ -4,6 +4,15 @@ export function localPasswordLoginAllowed() {
   return process.env.ALLOW_LOCAL_PASSWORD_LOGIN === "true";
 }
 
+function localHttpAllowed(url: URL) {
+  return url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+}
+
+export function secureAuthCookie(publicUrl?: string) {
+  if (process.env.NODE_ENV !== "production") return false;
+  try { return !localHttpAllowed(new URL(publicUrl ?? "")); } catch { return true; }
+}
+
 export function isGuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
@@ -20,8 +29,7 @@ export function azureSettings() {
   const redirectUri = process.env.AZURE_AD_REDIRECT_URI?.trim();
   if (!tenant || !isGuid(clientId) || !clientSecret || !redirectUri) throw new Error("Azure SSO is not configured.");
   const redirect = new URL(redirectUri);
-  const localHttp = process.env.NODE_ENV !== "production" && redirect.protocol === "http:" &&
-    ["localhost", "127.0.0.1", "[::1]"].includes(redirect.hostname);
+  const localHttp = localHttpAllowed(redirect);
   if ((!localHttp && redirect.protocol !== "https:") || redirect.username || redirect.password ||
       redirect.pathname !== "/api/auth/azure/callback" || redirect.search || redirect.hash) {
     throw new Error("Azure SSO redirect URI is invalid.");

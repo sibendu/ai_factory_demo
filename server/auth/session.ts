@@ -1,8 +1,8 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { loadLocalUsers } from "./local-users";
-import { entraTenant, isGuid, localPasswordLoginAllowed } from "./settings";
+import { configuredLocalUser } from "./local-users";
+import { entraTenant, isGuid, localPasswordLoginAllowed, secureAuthCookie } from "./settings";
 import { cookieOptions, readCookie, signCookie } from "./signed-cookie";
 
 export const SESSION_COOKIE = "einvoice_demo_session";
@@ -16,10 +16,10 @@ export function createAzureSession(tenant: string, objectId: string) {
   return signCookie("ui-session", { provider: "azure", tenant, objectId }, SESSION_LIFETIME_MS);
 }
 
-export async function setSession(value: string) {
+export async function setSession(value: string, publicUrl = process.env.NEXTAUTH_URL) {
   (await cookies()).set(SESSION_COOKIE, value, {
     ...cookieOptions,
-    secure: process.env.NODE_ENV === "production",
+    secure: secureAuthCookie(publicUrl),
     maxAge: SESSION_LIFETIME_MS / 1000,
   });
 }
@@ -34,7 +34,8 @@ async function currentUser(): Promise<string | null> {
   if (session.provider !== "local" || !localPasswordLoginAllowed() || typeof session.email !== "string") return null;
   try {
     const email = session.email.toLowerCase();
-    return loadLocalUsers().find(user => user.active && user.email.toLowerCase() === email)?.email ?? null;
+    const user = configuredLocalUser();
+    return user?.email === email ? user.email : null;
   } catch { return null; }
 }
 

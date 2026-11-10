@@ -11,7 +11,7 @@ import { AZURE_LOGOUT_COOKIE, AZURE_TRANSACTION_COOKIE, azureLogoutUrl } from ".
 export async function login(formData: FormData) {
   if (!localPasswordLoginAllowed()) redirect("/login?error=local_disabled");
   if (!sessionSigningConfigured()) {
-    console.error("[auth] Configure EINVOICE_SESSION_SECRET with at least 32 characters before signing in.");
+    console.error("[auth] Configure AIFACTORY_SESSION_SECRET with at least 32 characters before signing in.");
     redirect("/login?error=signin_unavailable");
   }
   const user = authenticateLocalUser(String(formData.get("username") || ""), String(formData.get("password") || ""));
