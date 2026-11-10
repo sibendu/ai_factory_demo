@@ -12,13 +12,14 @@ permissions:
 jobs:
   deploy:
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    environment: dev
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
       id-token: write
     concurrency:
-      group: ai-factory-${{ vars.AWS_ACCOUNT_ID }}-${{ vars.AWS_REGION }}-${{ vars.ECS_CLUSTER }}-${{ vars.ECS_SERVICE }}
+      group: ai-factory-dev-${{ vars.AWS_ACCOUNT_ID }}-${{ vars.AWS_REGION }}-${{ vars.ECS_CLUSTER }}-${{ vars.ECS_SERVICE }}
       cancel-in-progress: false
     env:
       AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}

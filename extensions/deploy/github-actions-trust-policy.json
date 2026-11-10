@@ -13,7 +13,7 @@
           "token.actions.githubusercontent.com:sub": [
             "repo:philips-internal@57478301/galanextgen@1349537927:ref:refs/heads/main",
             "repo:sibendu@11136023/appportfoliomgmt@1441016085:ref:refs/heads/main",
-            "repo:sibendu@11136023/ai_factory_demo@1449435525:ref:refs/heads/main"
+            "repo:sibendu@11136023/ai_factory_demo@1449435525:environment:dev"
           ]
         }
       }

@@ -4,7 +4,8 @@ This follows APR's CI/reusable-deployment workflow pattern, using Docker Hub as
 requested. Pull requests and pushes to `main`/`develop` run lint, application tests,
 deployment safeguard tests, the production build (including TypeScript validation),
 and a production dependency audit. Successful `main` checks call the deployment
-workflow. Manual runs use Actions → CI → Run workflow → main, with the same checks.
+workflow using the GitHub environment `dev`. Manual runs use Actions → CI → Run
+workflow → main, with the same checks and environment protections.
 There are no database migrations or RDS operations in this starter's workflow.
 
 ## What gets published and deployed
@@ -45,8 +46,10 @@ repository-local: coordinate other publishers and manual deployments separately.
 
 ## GitHub settings
 
-In **sibendu/ai_factory_demo → Settings → Secrets and variables → Actions**, add
-these repository **Variables**:
+In **sibendu/ai_factory_demo → Settings → Environments → dev**, configure these
+environment **Variables**. The deployment job declares `environment: dev`, so
+the variables already stored there are available to the deployment. Repository
+variables can supply defaults; values configured in `dev` take precedence.
 
 | Variable | Value |
 | --- | --- |
@@ -59,7 +62,7 @@ these repository **Variables**:
 | `DOCKERHUB_USERNAME` | `sibendu` |
 | `DOCKERHUB_REPOSITORY` | `sibendu/aifactorydemo` (also the workflow default) |
 
-Add this repository **Secret**:
+Add this environment **Secret** in `dev` (an existing repository secret also works):
 
 | Secret | Value |
 | --- | --- |
@@ -77,14 +80,20 @@ policy and trust, preserving any newer application entries. These files do not
 modify AWS. No static AWS access-key secrets are needed.
 
 This repository's OIDC settings were read on 2026-11-09. They use an immutable
-subject, so its main-branch trust entry is:
+subject. Since deployment uses the `dev` environment, its trust entry is:
 
 ```text
-repo:sibendu@11136023/ai_factory_demo@1449435525:ref:refs/heads/main
+repo:sibendu@11136023/ai_factory_demo@1449435525:environment:dev
 ```
 
-The audience is `sts.amazonaws.com`. The workflow deliberately uses no GitHub
-Environment, which would change the subject. The deployment permission additions
+The audience is `sts.amazonaws.com`. Replace this application's previous
+`ref:refs/heads/main` subject with the environment subject in the AWS role's trust
+policy, preserving APR/GALA entries. In **Settings → Environments → dev →
+Deployment branches and tags**, allow only `main`, since an environment subject
+does not include a branch. Both workflows also retain their main-only deployment
+condition. Put `environment: dev` on the deployment job inside the reusable
+workflow; a job that calls a reusable workflow cannot declare `environment`.
+The deployment permission additions
 are ECS service describe/update and task list/describe for this project's exact
 service and cluster. No ECR, task-definition registration, `RunTask`, `iam:PassRole`,
 secret-value access, or new infrastructure permission is needed for this app.
@@ -103,7 +112,7 @@ entries into the existing policy. See the [IAM setup instructions](../extensions
 5. Confirm the ALB target is healthy and sign-in works. Its health check remains
    HTTP `/login` on traffic port 3000, with success code 200.
 
-No live IAM settings, repository variables/secrets, or ECS resources are updated
+No live IAM settings, GitHub variables/secrets, or ECS resources are updated
 merely by adding these files. No workflow is dispatched during local preparation.
 
 ## Rollback

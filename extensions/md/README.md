@@ -7,7 +7,7 @@ The copies preserve APR/GALA entries and add:
 
 - ECS service `aifactory-cluster/svc_ai_facotry_demo`.
 - Task listing and description for `aifactory-cluster`.
-- The verified main-branch OIDC subject for `sibendu/ai_factory_demo`.
+- The OIDC subject for `sibendu/ai_factory_demo` using GitHub environment `dev`.
 
 This application publishes to Docker Hub, so it adds no ECR or RDS permissions.
 The existing shared AWS role is `github-actions-deploy-role`, and the permissions
